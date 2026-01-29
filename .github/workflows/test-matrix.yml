@@ -1,0 +1,76 @@
+name: 🧪 Matrix Device Testing
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Run weekly on Sunday at 2 AM UTC
+  workflow_dispatch:
+
+jobs:
+  matrix-test:
+    name: 🔧 ${{ matrix.device }} - ${{ matrix.size }} Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        device: [s905, s905x, s905d, s912, s922x]
+        size: [256M, 512M, 1G]
+      fail-fast: false
+    timeout-minutes: 15
+    steps:
+      - name: 📁 Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: 🔄 Setup Permissions
+        run: |
+          chmod +x repack.sh
+          chmod +x utils/*.sh
+          
+      - name: 📦 Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl tar gzip kpartx dosfstools e2fsprogs u-boot-tools parted
+          
+      - name: 🧪 Run Matrix Test
+        id: test
+        run: |
+          echo "🚀 Testing device: ${{ matrix.device }} with size: ${{ matrix.size }}"
+          
+          ./repack.sh \
+            -u "https://downloads.openwrt.org/releases/23.05.0/targets/armvirt/64/openwrt-23.05.0-armvirt-64-default-rootfs.tar.gz" \
+            -d "${{ matrix.device }}" \
+            -o "matrix-${{ matrix.device }}-${{ matrix.size }}.img" \
+            -s "${{ matrix.size }}" \
+            -v
+            
+      - name: 📊 Validate Test Results
+        run: |
+          OUTPUT_FILE="matrix-${{ matrix.device }}-${{ matrix.size }}.img"
+          
+          if [ ! -f "$OUTPUT_FILE" ]; then
+            echo "❌ Test failed: Output file not created"
+            exit 1
+          fi
+          
+          IMAGE_SIZE=$(stat -c%s "$OUTPUT_FILE")
+          MIN_SIZE=$((256 * 1024 * 1024))  # 256MB minimum
+          
+          if [ $IMAGE_SIZE -lt $MIN_SIZE ]; then
+            echo "❌ Test failed: Image too small ($((IMAGE_SIZE/1024/1024))MB < 256MB)"
+            exit 1
+          fi
+          
+          echo "✅ Test passed: $OUTPUT_FILE created successfully"
+          echo "📏 Size: $((IMAGE_SIZE/1024/1024))MB"
+          
+      - name: 📤 Upload Test Artifact
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: matrix-${{ matrix.device }}-${{ matrix.size }}
+          path: matrix-${{ matrix.device }}-${{ matrix.size }}.img
+          retention-days: 3
+          
+      - name: 🗑️ Cleanup Large Files
+        if: always()
+        run: |
+          rm -f *.img
+          echo "🧹 Cleaned up test images"
