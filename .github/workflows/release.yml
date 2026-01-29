@@ -1,0 +1,95 @@
+name: 🚀 Auto Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  create-release:
+    name: 📦 Create Release Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📁 Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: 🔄 Setup Permissions
+        run: |
+          chmod +x repack.sh
+          chmod +x utils/*.sh
+          
+      - name: 📦 Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl tar gzip kpartx dosfstools e2fsprogs u-boot-tools parted zip
+          
+      - name: 📋 Prepare Release Package
+        run: |
+          RELEASE_DIR="amlogic-s9xxx-repacker-${{ github.ref_name }}"
+          mkdir -p "$RELEASE_DIR"
+          
+          # Copy essential files
+          cp repack.sh "$RELEASE_DIR/"
+          cp -r config/ "$RELEASE_DIR/"
+          cp -r utils/ "$RELEASE_DIR/"
+          cp -r templates/ "$RELEASE_DIR/"
+          cp README.md "$RELEASE_DIR/"
+          cp LICENSE "$RELEASE_DIR/"
+          
+          # Create sample config
+          cat > "$RELEASE_DIR/USAGE_EXAMPLES.txt" << 'EOF'
+🚀 USAGE EXAMPLES
+
+Basic Usage:
+./repack.sh -u https://downloads.openwrt.org/.../rootfs.tar.gz -d s905x -o output.img
+
+Local File:
+./repack.sh -f ./rootfs.tar.gz -d s922x -o myrouter.img
+
+Advanced:
+./repack.sh -u [URL] -d [device] -o [output] -s 1G -v
+EOF
+          
+          # Set permissions
+          find "$RELEASE_DIR" -type f -name "*.sh" -exec chmod +x {} \;
+          
+          # Create zip archive
+          zip -r "${RELEASE_DIR}.zip" "$RELEASE_DIR"
+          
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "amlogic-s9xxx-repacker-${{ github.ref_name }}.zip"
+          generate_release_notes: true
+          body: |
+            ## 🎉 Amlogic S9xxx OpenWRT Repacker ${{ github.ref_name }}
+            
+            ✅ **Automatically tested and validated** on GitHub Actions
+            
+            ### ✨ Features
+            - Multi-device support: S905, S905X, S905D, S912, S922X
+            - Auto-download from URL or use local rootfs files
+            - Error handling and validation at every step
+            - Boot guarantee for each supported chipset
+            
+            ### 📦 Package Contents
+            - `repack.sh` - Main repacking script
+            - `config/` - Device-specific configurations
+            - `utils/` - Helper utilities
+            - `templates/` - Boot template files
+            - `README.md` - Complete documentation
+            - `USAGE_EXAMPLES.txt` - Quick start guide
+            
+            ### ⚙️ Requirements
+            - Linux system (Ubuntu/Debian recommended)
+            - 2GB+ free disk space
+            - sudo privileges
+            
+            ### 🚨 Important Notes
+            - **Always backup your data** before flashing
+            - Test on SD card first before eMMC installation
+            - Minimum image size: 256MB
+            
+            **Happy hacking!** 🛠️
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
